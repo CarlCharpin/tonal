@@ -30,21 +30,27 @@ def analyze_audio(audio_filepath):
 
         # --- Intensity Extraction ---
         intensity = snd.to_intensity(time_step=0.01)
-        # We get the intensity values in dB.
-        intensity_values = intensity.values[0] # Intensity is a 1D array inside a 2D one.
+        intensity_values = intensity.values[0]
+
+        # --- Normalize Intensity to a 0-1 scale ---
+        # This makes it a simple visual guide without needing a dB scale.
+        min_intensity = np.nanmin(intensity_values)
+        max_intensity = np.nanmax(intensity_values)
+        if max_intensity > min_intensity:
+            normalized_intensity = (intensity_values - min_intensity) / (max_intensity - min_intensity)
+        else:
+            # Avoid division by zero if intensity is constant
+            normalized_intensity = np.zeros_like(intensity_values)
 
         # --- Time Alignment ---
-        # We'll use the pitch object's time values as the reference.
         times = pitch.xs()
 
-        # It's possible for intensity to have a slightly different number of
-        # time steps. We'll truncate the longer array to match the shorter one.
-        min_len = min(len(pitch_values), len(intensity_values))
+        min_len = min(len(pitch_values), len(normalized_intensity))
         times = times[:min_len]
         pitch_values = pitch_values[:min_len]
-        intensity_values = intensity_values[:min_len]
+        normalized_intensity = normalized_intensity[:min_len]
 
-        return (times, pitch_values, intensity_values)
+        return (times, pitch_values, normalized_intensity)
 
     except Exception as e:
         # This can happen if the file is not a valid audio file

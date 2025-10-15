@@ -23,43 +23,33 @@ def create_pitch_plot(history):
     """
     fig, ax = plt.subplots()
     ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Pitch (Hz)", color='tab:blue')
-    ax.set_title("Pitch and Amplitude Contour")
+    ax.set_ylabel("Pitch (Hz)")
+    ax.set_title("Pitch Contour")
     ax.grid(True, which='both', linestyle='--', linewidth=0.5)
 
     all_pitches = []
-    all_intensities = []
 
-    # Collect all valid data first for scaling
-    for _, pitch, intensity in history:
+    # Collect all valid pitch data first for scaling
+    for _, pitch, _ in history:
         if pitch is not None:
             all_pitches.extend(pitch[~np.isnan(pitch)])
-        if intensity is not None:
-            all_intensities.extend(intensity)
 
-    # --- Amplitude Plot (Secondary Y-axis) ---
-    if all_intensities:
-        ax2 = ax.twinx()
-        ax2.set_ylabel("Intensity (dB)", color='gray', alpha=0.7)
-        ax2.tick_params(axis='y', labelcolor='gray')
+    # --- Pitch and Amplitude Plotting ---
+    for i, (times, pitch, norm_intensity) in enumerate(history):
+        if times is not None and pitch is not None and norm_intensity is not None:
+            # --- Amplitude as background fill ---
+            # The normalized intensity (0 to 1) is scaled to the bottom 30% of the pitch range
+            # to serve as a visual guide without cluttering the main plot.
+            y_fill_max = (ax.get_ylim()[1] - ax.get_ylim()[0]) * 0.3 + ax.get_ylim()[0]
+            y_fill = norm_intensity * y_fill_max
 
-        # Plot each intensity attempt
-        for i, (times, _, intensity) in enumerate(history):
-            if times is not None and intensity is not None:
-                alpha = 1.0 - (len(history) - 1 - i) * 0.4
-                min_intensity = np.nanmin(all_intensities) if all_intensities else 0
-                ax2.fill_between(times, intensity, min_intensity - 5, color='gray', alpha=max(0.05, alpha/4), interpolate=True)
+            alpha = 1.0 - (len(history) - 1 - i) * 0.4
+            ax.fill_between(times, y_fill, 0, color='gray', alpha=max(0.05, alpha/4), interpolate=True)
 
-    # --- Pitch Plot (Primary Y-axis) ---
-    for i, (times, pitch, intensity) in enumerate(history):
-        if times is not None and pitch is not None and intensity is not None:
-            # --- Visualize Pauses ---
-            # Define silence threshold (e.g., 25 dB below the max intensity of this attempt)
-            max_intensity = np.nanmax(intensity)
-            silence_threshold = max_intensity - 25
-
+            # --- Visualize Pauses in Pitch Plot ---
+            # Use a threshold on the normalized intensity to detect silence
             plot_pitch = pitch.copy()
-            plot_pitch[intensity < silence_threshold] = np.nan # Create breaks in the line
+            plot_pitch[norm_intensity < 0.15] = np.nan # Create breaks in the line for quiet parts
 
             # The most recent attempt is solid, older ones are faded.
             alpha = 1.0 - (len(history) - 1 - i) * 0.4
