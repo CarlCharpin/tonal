@@ -1,0 +1,5 @@
+gradio
+praat-parselmouth
+matplotlib
+pandas
+scipy
