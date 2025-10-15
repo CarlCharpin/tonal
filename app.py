@@ -15,11 +15,34 @@ vietnamese_words = [
     "mạ (rice seedling)", "ba (three)", "cà (eggplant)", "cá (fish)", "cả (all)"
 ]
 
+# --- Helper function for robust outlier removal ---
+def remove_outliers_iqr(pitch_data):
+    """
+    Removes outliers from pitch data using the IQR method.
+    Any data point outside of Q1 - 1.5*IQR and Q3 + 1.5*IQR is considered an outlier.
+    """
+    # Can't compute IQR on less than 4 points.
+    if pitch_data is None or len(pitch_data[~np.isnan(pitch_data)]) < 4:
+        return pitch_data
+
+    q1 = np.nanpercentile(pitch_data, 25)
+    q3 = np.nanpercentile(pitch_data, 75)
+    iqr = q3 - q1
+
+    lower_bound = q1 - 1.5 * iqr
+    upper_bound = q3 + 1.5 * iqr
+
+    # Create a copy as a float array to allow for NaN values
+    cleaned_pitch = pitch_data.copy().astype(float)
+    # Replace outliers with NaN so they are not plotted
+    cleaned_pitch[(cleaned_pitch < lower_bound) | (cleaned_pitch > upper_bound)] = np.nan
+    return cleaned_pitch
+
 # --- Enhanced Plotting Function ---
 def create_pitch_plot(history):
     """
     Generates a plot from a list of pitch and intensity contours.
-    Handles outliers, visualizes pauses, and shows amplitude.
+    This version uses robust outlier detection and a corrected plot order.
     """
     fig, ax = plt.subplots()
     ax.set_xlabel("Time (s)")
@@ -27,40 +50,42 @@ def create_pitch_plot(history):
     ax.set_title("Pitch Contour")
     ax.grid(True, which='both', linestyle='--', linewidth=0.5)
 
-    all_pitches = []
-
-    # Collect all valid pitch data first for scaling
-    for _, pitch, _ in history:
+    # 1. First, process all data to remove outliers and find the correct Y-axis limits.
+    all_cleaned_pitches = []
+    processed_history = []
+    for times, pitch, norm_intensity in history:
         if pitch is not None:
-            all_pitches.extend(pitch[~np.isnan(pitch)])
+            cleaned_pitch = remove_outliers_iqr(pitch)
+            all_cleaned_pitches.extend(cleaned_pitch[~np.isnan(cleaned_pitch)])
+            processed_history.append((times, cleaned_pitch, norm_intensity))
+        else:
+            processed_history.append((times, pitch, norm_intensity)) # Keep None entries
 
-    # --- Pitch and Amplitude Plotting ---
-    for i, (times, pitch, norm_intensity) in enumerate(history):
-        if times is not None and pitch is not None and norm_intensity is not None:
-            # --- Amplitude as background fill ---
-            # The normalized intensity (0 to 1) is scaled to the bottom 30% of the pitch range
-            # to serve as a visual guide without cluttering the main plot.
+    # 2. Set the Y-axis limits based on the cleaned data.
+    if all_cleaned_pitches:
+        min_pitch = np.nanmin(all_cleaned_pitches)
+        max_pitch = np.nanmax(all_cleaned_pitches)
+        # Add some padding to the limits
+        y_bottom = min_pitch * 0.9
+        y_top = max_pitch * 1.1
+        ax.set_ylim(bottom=max(0, y_bottom), top=y_top)
+
+    # 3. Now, draw the amplitude and pitch plots.
+    for i, (times, cleaned_pitch, norm_intensity) in enumerate(processed_history):
+        if times is not None and cleaned_pitch is not None and norm_intensity is not None:
+            # --- Amplitude as background fill (now correctly scaled) ---
             y_fill_max = (ax.get_ylim()[1] - ax.get_ylim()[0]) * 0.3 + ax.get_ylim()[0]
             y_fill = norm_intensity * y_fill_max
 
             alpha = 1.0 - (len(history) - 1 - i) * 0.4
-            ax.fill_between(times, y_fill, 0, color='gray', alpha=max(0.05, alpha/4), interpolate=True)
+            ax.fill_between(times, y_fill, 0, color='gray', alpha=max(0.05, alpha/4), interpolate=True, zorder=1)
 
             # --- Visualize Pauses in Pitch Plot ---
-            # Use a threshold on the normalized intensity to detect silence
-            plot_pitch = pitch.copy()
-            plot_pitch[norm_intensity < 0.15] = np.nan # Create breaks in the line for quiet parts
+            plot_pitch = cleaned_pitch.copy()
+            plot_pitch[norm_intensity < 0.15] = np.nan # Create breaks for quiet parts
 
-            # The most recent attempt is solid, older ones are faded.
-            alpha = 1.0 - (len(history) - 1 - i) * 0.4
+            # Plot the pitch contour
             ax.plot(times, plot_pitch, label=f"Attempt {i+1}", alpha=max(0.2, alpha), marker='.', zorder=10+i)
-
-    # --- Handle Outliers for Y-axis scaling ---
-    if all_pitches:
-        # Use 98th percentile to avoid outliers skewing the graph
-        upper_bound = np.nanpercentile(all_pitches, 98) * 1.1
-        lower_bound = np.nanpercentile(all_pitches, 2) * 0.9
-        ax.set_ylim(bottom=max(0, lower_bound), top=upper_bound)
 
     ax.legend(loc='upper left')
     plt.tight_layout()
