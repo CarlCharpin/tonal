@@ -58,36 +58,65 @@ def analyze_audio(audio_filepath):
         print(f"Error analyzing audio: {e}")
         return (None, None, None)
 
-def analyze_formants(audio_filepath):
+def analyze_formants(audio_filepath, time_window_ms=50):
     """
-    Analyzes an audio file to extract its F1 and F2 formant trajectories.
+    Analyzes the most stable part of a vowel in an audio file to extract its F1 and F2 formants.
+    This method finds the point of maximum intensity within voiced segments and analyzes a small
+    window around that point.
 
     Args:
         audio_filepath (str): The path to the audio file.
+        time_window_ms (int): The duration of the analysis window in milliseconds.
 
     Returns:
-        A tuple of (f1_values, f2_values) for the voiced sections.
-        Returns (None, None) if analysis fails.
+        A tuple of (f1_values, f2_values) for the stable vowel segment.
+        Returns (None, None) if analysis fails or no vowel is found.
     """
     try:
         snd = parselmouth.Sound(audio_filepath)
-        # To get formants only for voiced sections, we first need the pitch
+
+        # 1. Get intensity and pitch to identify voiced segments
+        intensity = snd.to_intensity()
         pitch = snd.to_pitch()
 
-        # This is the formant object. We need to specify max formants and max frequency.
-        # 5500 Hz is standard for female speakers, 5000 Hz for male. We'll use 5500.
-        formant = snd.to_formant_burg(time_step=0.01, max_number_of_formants=5, maximum_formant=5500.0)
-
-        # Get the times from the pitch object where voicing is detected
         voiced_times = pitch.xs()[pitch.selected_array['frequency'] > 0]
+        if len(voiced_times) == 0:
+            print("No voiced segments found.")
+            return (None, None)
 
+        # 2. Find the time of maximum intensity within the voiced segments
+        max_intensity = 0
+        time_of_max_intensity = 0
+        for t in voiced_times:
+            current_intensity = intensity.get_value(t)
+            if current_intensity > max_intensity:
+                max_intensity = current_intensity
+                time_of_max_intensity = t
+
+        if time_of_max_intensity == 0:
+            print("Could not determine the point of maximum intensity.")
+            return (None, None)
+
+        # 3. Define the analysis window around the point of maximum intensity
+        window_duration_s = time_window_ms / 1000.0
+        start_time = max(0, time_of_max_intensity - (window_duration_s / 2))
+        end_time = min(snd.duration, time_of_max_intensity + (window_duration_s / 2))
+
+        # Extract the sound segment for analysis
+        vowel_segment = snd.extract_part(from_time=start_time, to_time=end_time)
+
+        # 4. Analyze formants on the extracted vowel segment
+        formant = vowel_segment.to_formant_burg(time_step=0.01, max_number_of_formants=5, maximum_formant=5500.0)
+
+        num_time_steps = formant.get_number_of_frames()
         f1_values = []
         f2_values = []
 
-        for t in voiced_times:
-            f1 = formant.get_value_at_time(formant_number=1, time=t)
-            f2 = formant.get_value_at_time(formant_number=2, time=t)
-            # Only add the formants if they are not NaN
+        for i in range(num_time_steps):
+            time = formant.get_time_from_frame_number(i+1)
+            f1 = formant.get_value_at_time(formant_number=1, time=time)
+            f2 = formant.get_value_at_time(formant_number=2, time=time)
+
             if not np.isnan(f1) and not np.isnan(f2):
                 f1_values.append(f1)
                 f2_values.append(f2)
