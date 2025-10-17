@@ -221,7 +221,7 @@ def main():
         with gr.Row():
             with gr.Column(scale=1):
                 word_selection = gr.Dropdown(vietnamese_words, label="Select a Word", value=vietnamese_words[0])
-                audio_input = gr.Audio(sources=["microphone"], type="numpy", label="Record Your Pronunciation")
+                audio_input = gr.Audio(sources=["microphone", "upload"], type="numpy", label="Record or Upload Audio")
 
                 with gr.Row():
                     analyze_btn = gr.Button("Analyze Pronunciation")
