@@ -119,21 +119,37 @@ def create_vowel_plot(formant_history):
     """
     fig = go.Figure()
 
+    # Add the background image first
+    try:
+        from PIL import Image
+        img = Image.open("vowel_chart.png")
+        fig.add_layout_image(
+            dict(
+                source=img,
+                xref="x", yref="y",
+                x=800, y=200,
+                sizex=1700, sizey=700,
+                sizing="stretch",
+                opacity=0.5, layer="below"
+            )
+        )
+    except FileNotFoundError:
+        print("vowel_chart.png not found. Plotting on a blank background.")
+
     # Plot each formant trajectory attempt
     for i, (f1, f2) in enumerate(formant_history):
         if f1 is not None and f2 is not None and len(f1) > 0:
             opacity = 1.0 - (len(formant_history) - 1 - i) * 0.3
-            # Plot F2 vs F1, as is standard for vowel charts
             fig.add_trace(go.Scatter(
                 x=f2,
                 y=f1,
                 mode='lines+markers',
                 name=f'Attempt {i+1}',
                 opacity=max(0.2, opacity),
-                marker=dict(size=6),
+                line=dict(width=2),
+                marker=dict(size=8),
                 hovertemplate='F2: %{x:.0f}Hz<br>F1: %{y:.0f}Hz<extra></extra>'
             ))
-            # Add a start point marker
             fig.add_trace(go.Scatter(
                 x=[f2[0]],
                 y=[f1[0]],
@@ -143,26 +159,6 @@ def create_vowel_plot(formant_history):
                 showlegend=False,
                 hovertemplate='Start<extra></extra>'
             ))
-
-    # Load and display the vowel chart image as the background
-    try:
-        from PIL import Image
-        img = Image.open("vowel_chart.png")
-        fig.add_layout_image(
-            dict(
-                source=img,
-                xref="x",
-                yref="y",
-                x=800,  # F2 start
-                y=200,  # F1 start
-                sizex=1700, # F2 range (2500-800)
-                sizey=700, # F1 range (900-200)
-                sizing="stretch",
-                opacity=0.5,
-                layer="below")
-        )
-    except FileNotFoundError:
-        print("vowel_chart.png not found. Plotting on a blank background.")
 
     # Invert axes to match standard phonetic charts (origin at top-right)
     fig.update_layout(
