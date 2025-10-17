@@ -102,7 +102,7 @@ def create_vowel_plot(formant_history):
     try:
         img = plt.imread("vowel_chart.png")
         # The extent parameter defines the data coordinates for the image corners [left, right, bottom, top].
-        # We use a standard, non-inverted range here and then invert the axes for the whole plot later.
+        # The inverted axes will orient the image correctly.
         ax.imshow(img, aspect='auto', extent=[800, 2500, 200, 900], zorder=0)
     except FileNotFoundError:
         print("vowel_chart.png not found. Plotting on a blank background.")
@@ -116,9 +116,9 @@ def create_vowel_plot(formant_history):
             # Add a start point marker
             ax.plot(f2[0], f1[0], marker='>', color='green', markersize=8, alpha=alpha)
 
-    # Invert axes to match standard phonetic charts (origin at top-right)
-    ax.invert_xaxis()
-    ax.invert_yaxis()
+    # Set axis limits to create an inverted chart (origin at top-right)
+    ax.set_xlim(2500, 800)
+    ax.set_ylim(900, 200)
     ax.set_xlabel("F2 (Hz)")
     ax.set_ylabel("F1 (Hz)")
     ax.legend()
