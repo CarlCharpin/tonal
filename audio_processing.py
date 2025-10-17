@@ -57,3 +57,43 @@ def analyze_audio(audio_filepath):
         # or if there's an issue with the analysis.
         print(f"Error analyzing audio: {e}")
         return (None, None, None)
+
+def analyze_formants(audio_filepath):
+    """
+    Analyzes an audio file to extract its F1 and F2 formant trajectories.
+
+    Args:
+        audio_filepath (str): The path to the audio file.
+
+    Returns:
+        A tuple of (f1_values, f2_values) for the voiced sections.
+        Returns (None, None) if analysis fails.
+    """
+    try:
+        snd = parselmouth.Sound(audio_filepath)
+        # To get formants only for voiced sections, we first need the pitch
+        pitch = snd.to_pitch()
+
+        # This is the formant object. We need to specify max formants and max frequency.
+        # 5500 Hz is standard for female speakers, 5000 Hz for male. We'll use 5500.
+        formant = snd.to_formant_burg(time_step=0.01, max_number_of_formants=5, maximum_formant=5500.0)
+
+        # Get the times from the pitch object where voicing is detected
+        voiced_times = pitch.xs()[pitch.selected_array['frequency'] > 0]
+
+        f1_values = []
+        f2_values = []
+
+        for t in voiced_times:
+            f1 = formant.get_value_at_time(formant_number=1, time=t)
+            f2 = formant.get_value_at_time(formant_number=2, time=t)
+            # Only add the formants if they are not NaN
+            if not np.isnan(f1) and not np.isnan(f2):
+                f1_values.append(f1)
+                f2_values.append(f2)
+
+        return (np.array(f1_values), np.array(f2_values))
+
+    except Exception as e:
+        print(f"Error analyzing formants: {e}")
+        return (None, None)

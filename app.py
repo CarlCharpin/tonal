@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gradio as gr
 import matplotlib.pyplot as plt
 import numpy as np
-from audio_processing import analyze_audio
+from audio_processing import analyze_audio, analyze_formants
 from scipy.io.wavfile import write as write_wav
 
 # Word list remains the same
@@ -91,40 +91,95 @@ def create_pitch_plot(history):
     plt.tight_layout()
     return fig
 
-# --- Main Analysis Function for Gradio ---
-def analyze_pronunciation(word, audio_input, history_state):
+def create_vowel_plot(formant_history):
     """
-    Processes user's audio, calls the analysis module, and returns a plot.
+    Generates a plot of the F1/F2 vowel trajectory on a reference chart.
+    """
+    fig, ax = plt.subplots()
+    ax.set_title("Vowel Formant Trajectory")
+
+    # Load and display the vowel chart image as the background
+    try:
+        img = plt.imread("vowel_chart.png")
+        # The exact extent values need to be tuned to align the data with the chart.
+        # These are initial estimates for a typical F1/F2 space.
+        ax.imshow(img, aspect='auto', extent=[2500, 800, 900, 200], zorder=0)
+    except FileNotFoundError:
+        print("vowel_chart.png not found. Plotting on a blank background.")
+
+    # Plot each formant trajectory attempt
+    for i, (f1, f2) in enumerate(formant_history):
+        if f1 is not None and f2 is not None and len(f1) > 0:
+            alpha = 1.0 - (len(formant_history) - 1 - i) * 0.4
+            # Plot F2 vs F1, as is standard
+            ax.plot(f2, f1, alpha=max(0.2, alpha), marker='o', linestyle='-', markersize=4, label=f"Attempt {i+1}")
+            # Add a start point marker
+            ax.plot(f2[0], f1[0], marker='>', color='green', markersize=8, alpha=alpha)
+
+    # Invert axes to match standard phonetic charts (origin at top-right)
+    ax.invert_xaxis()
+    ax.invert_yaxis()
+    ax.set_xlabel("F2 (Hz)")
+    ax.set_ylabel("F1 (Hz)")
+    ax.legend()
+    plt.tight_layout()
+    return fig
+
+# --- Main Analysis Functions for Gradio ---
+def analyze_pitch_and_intensity(word, audio_input, history_state):
+    """
+    Processes audio for pitch and intensity, returning the pitch plot.
     """
     if audio_input is None:
-        return create_pitch_plot([]), history_state
+        return create_pitch_plot([]), history_state, None
 
     sample_rate, audio_data = audio_input
     temp_audio_file = "temp_recording.wav"
     write_wav(temp_audio_file, sample_rate, audio_data)
 
-    # Call the new, upgraded analysis function
     times, pitch_values, intensity_values = analyze_audio(temp_audio_file)
 
     if history_state is None:
         history_state = []
-
-    # Add new attempt (now a 3-tuple) to history
     history_state.append((times, pitch_values, intensity_values))
-
     if len(history_state) > 3:
         history_state.pop(0)
 
     plot = create_pitch_plot(history_state)
 
-    return plot, history_state
+    # Return plot, updated state, and a cleared vowel plot
+    return plot, history_state, None
+
+def analyze_vowel_formants(word, audio_input, formant_history_state):
+    """
+    Processes audio for F1/F2 formants, returning the vowel plot.
+    """
+    if audio_input is None:
+        return create_vowel_plot([]), formant_history_state, None
+
+    sample_rate, audio_data = audio_input
+    temp_audio_file = "temp_recording.wav"
+    write_wav(temp_audio_file, sample_rate, audio_data)
+
+    f1, f2 = analyze_formants(temp_audio_file)
+
+    if formant_history_state is None:
+        formant_history_state = []
+    formant_history_state.append((f1, f2))
+    if len(formant_history_state) > 3:
+        formant_history_state.pop(0)
+
+    plot = create_vowel_plot(formant_history_state)
+
+    # Return plot, updated state, and a cleared pitch plot
+    return plot, formant_history_state, None
 
 # --- Gradio Interface Definition ---
 def main():
     """Defines and launches the Gradio app."""
     with gr.Blocks() as iface:
-        gr.Markdown("# Vietnamese Tone Visualizer")
-        gr.Markdown("Select a word, record yourself saying it, and see your pitch contour!")
+        gr.Markdown("# Vietnamese Tone & Vowel Visualizer")
+        gr.Markdown("Select a word, record yourself, and analyze your pitch and vowel formants.")
 
         with gr.Row():
             with gr.Column(scale=1):
@@ -132,45 +187,54 @@ def main():
                 audio_input = gr.Audio(sources=["microphone"], type="numpy", label="Record Your Pronunciation")
 
                 with gr.Row():
-                    submit_btn = gr.Button("Analyze")
-                    try_again_btn = gr.Button("Try Again") # New Button
+                    pitch_btn = gr.Button("Analyze Pitch")
+                    vowel_btn = gr.Button("Analyze Vowels")
 
-                clear_btn = gr.Button("Clear All History")
+                with gr.Row():
+                    try_again_btn = gr.Button("Try Again")
+                    clear_btn = gr.Button("Clear All")
 
             with gr.Column(scale=2):
-                output_plot = gr.Plot(label="Pitch Contour")
+                pitch_plot = gr.Plot(label="Pitch Contour")
+                vowel_plot = gr.Plot(label="Vowel Formant Trajectory")
 
-        history_state = gr.State([])
+        # States for history
+        pitch_history_state = gr.State([])
+        formant_history_state = gr.State([])
 
-        submit_btn.click(
-            fn=analyze_pronunciation,
-            inputs=[word_selection, audio_input, history_state],
-            outputs=[output_plot, history_state]
+        # Button Clicks
+        pitch_btn.click(
+            fn=analyze_pitch_and_intensity,
+            inputs=[word_selection, audio_input, pitch_history_state],
+            outputs=[pitch_plot, pitch_history_state, vowel_plot] # Clear other plot
         )
 
-        # --- "Try Again" Functionality ---
-        def try_again(history):
-            """Removes the last attempt from the history and plot."""
-            if history:
-                history.pop()
-            # Return a cleared audio input widget and the updated plot/history
-            return None, create_pitch_plot(history), history
+        vowel_btn.click(
+            fn=analyze_vowel_formants,
+            inputs=[word_selection, audio_input, formant_history_state],
+            outputs=[vowel_plot, formant_history_state, pitch_plot] # Clear other plot
+        )
+
+        def try_again(p_history, f_history):
+            """Removes the last attempt from both histories and plots."""
+            if p_history: p_history.pop()
+            if f_history: f_history.pop()
+            return None, create_pitch_plot(p_history), create_vowel_plot(f_history), p_history, f_history
 
         try_again_btn.click(
             fn=try_again,
-            inputs=[history_state],
-            outputs=[audio_input, output_plot, history_state]
+            inputs=[pitch_history_state, formant_history_state],
+            outputs=[audio_input, pitch_plot, vowel_plot, pitch_history_state, formant_history_state]
         )
 
-        # --- "Clear History" Functionality ---
-        def clear_history():
-            """Clears all attempts and the plot."""
-            return create_pitch_plot([]), []
+        def clear_all():
+            """Clears all history and plots."""
+            return None, create_pitch_plot([]), create_vowel_plot([]), [], []
 
         clear_btn.click(
-            fn=clear_history,
+            fn=clear_all,
             inputs=[],
-            outputs=[output_plot, history_state]
+            outputs=[audio_input, pitch_plot, vowel_plot, pitch_history_state, formant_history_state]
         )
 
     print("Launching Gradio app...")
