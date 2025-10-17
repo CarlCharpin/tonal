@@ -1,5 +1,5 @@
 gradio
 praat-parselmouth
-matplotlib
+plotly
 pandas
 scipy

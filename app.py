@@ -4,7 +4,8 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import gradio as gr
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import numpy as np
 from audio_processing import analyze_audio, analyze_formants
 from scipy.io.wavfile import write as write_wav
@@ -41,88 +42,139 @@ def remove_outliers_iqr(pitch_data):
 # --- Enhanced Plotting Function ---
 def create_pitch_plot(history):
     """
-    Generates a plot from a list of pitch and intensity contours.
-    This version uses robust outlier detection and a corrected plot order.
+    Generates an interactive plot from a list of pitch and intensity contours using Plotly.
     """
-    fig, ax = plt.subplots()
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Pitch (Hz)")
-    ax.set_title("Pitch Contour")
-    ax.grid(True, which='both', linestyle='--', linewidth=0.5)
+    fig = go.Figure()
 
-    # 1. First, process all data to remove outliers and find the correct Y-axis limits.
     all_cleaned_pitches = []
     processed_history = []
+
+    # 1. First, process all data to remove outliers and find the correct Y-axis limits.
     for times, pitch, norm_intensity in history:
         if pitch is not None:
             cleaned_pitch = remove_outliers_iqr(pitch)
+            # Add to list for y-axis calculation, ignoring NaNs
             all_cleaned_pitches.extend(cleaned_pitch[~np.isnan(cleaned_pitch)])
             processed_history.append((times, cleaned_pitch, norm_intensity))
         else:
             processed_history.append((times, pitch, norm_intensity)) # Keep None entries
 
-    # 2. Set the Y-axis limits based on the cleaned data.
+    # 2. Set the Y-axis range based on the cleaned data.
+    y_range = None
     if all_cleaned_pitches:
         min_pitch = np.nanmin(all_cleaned_pitches)
         max_pitch = np.nanmax(all_cleaned_pitches)
-        # Add some padding to the limits
-        y_bottom = min_pitch * 0.9
+        y_bottom = max(0, min_pitch * 0.9)
         y_top = max_pitch * 1.1
-        ax.set_ylim(bottom=max(0, y_bottom), top=y_top)
+        y_range = [y_bottom, y_top]
 
     # 3. Now, draw the amplitude and pitch plots.
     for i, (times, cleaned_pitch, norm_intensity) in enumerate(processed_history):
         if times is not None and cleaned_pitch is not None and norm_intensity is not None:
-            # --- Amplitude as background fill (now correctly scaled) ---
-            y_fill_max = (ax.get_ylim()[1] - ax.get_ylim()[0]) * 0.3 + ax.get_ylim()[0]
-            y_fill = norm_intensity * y_fill_max
-
-            alpha = 1.0 - (len(history) - 1 - i) * 0.4
-            ax.fill_between(times, y_fill, 0, color='gray', alpha=max(0.05, alpha/4), interpolate=True, zorder=1)
 
             # --- Visualize Pauses in Pitch Plot ---
             plot_pitch = cleaned_pitch.copy()
             plot_pitch[norm_intensity < 0.15] = np.nan # Create breaks for quiet parts
 
-            # Plot the pitch contour
-            ax.plot(times, plot_pitch, label=f"Attempt {i+1}", alpha=max(0.2, alpha), marker='.', zorder=10+i)
+            # --- Amplitude as background fill ---
+            # Plotly doesn't have a direct equivalent of zorder, so we plot intensity first.
+            # We scale intensity to be 30% of the pitch range for visual guidance.
+            if y_range:
+                y_fill = norm_intensity * (y_range[1] - y_range[0]) * 0.3 + y_range[0]
+                fig.add_trace(go.Scatter(
+                    x=times, y=y_fill,
+                    fill='tozeroy',
+                    mode='none',
+                    fillcolor='rgba(128, 128, 128, 0.2)',
+                    name=f'Intensity {i+1}',
+                    showlegend=False,
+                ))
 
-    ax.legend(loc='upper left')
-    plt.tight_layout()
+            # --- Plot the pitch contour ---
+            opacity = 1.0 - (len(history) - 1 - i) * 0.3
+            fig.add_trace(go.Scatter(
+                x=times,
+                y=plot_pitch,
+                mode='lines+markers',
+                name=f'Attempt {i+1}',
+                opacity=max(0.2, opacity),
+                marker=dict(size=4),
+                hovertemplate='Time: %{x:.2f}s<br>Pitch: %{y:.2f}Hz<extra></extra>'
+            ))
+
+    fig.update_layout(
+        title="Pitch Contour",
+        xaxis_title="Time (s)",
+        yaxis_title="Pitch (Hz)",
+        yaxis_range=y_range,
+        legend_title="Attempts",
+        template="plotly_white"
+    )
+
     return fig
 
 def create_vowel_plot(formant_history):
     """
-    Generates a plot of the F1/F2 vowel trajectory on a reference chart.
+    Generates an interactive plot of the F1/F2 vowel trajectory on a reference chart using Plotly.
     """
-    fig, ax = plt.subplots()
-    ax.set_title("Vowel Formant Trajectory")
-
-    # Load and display the vowel chart image as the background
-    try:
-        img = plt.imread("vowel_chart.png")
-        # The extent parameter defines the data coordinates for the image corners [left, right, bottom, top].
-        # The inverted axes will orient the image correctly.
-        ax.imshow(img, aspect='auto', extent=[800, 2500, 200, 900], zorder=0)
-    except FileNotFoundError:
-        print("vowel_chart.png not found. Plotting on a blank background.")
+    fig = go.Figure()
 
     # Plot each formant trajectory attempt
     for i, (f1, f2) in enumerate(formant_history):
         if f1 is not None and f2 is not None and len(f1) > 0:
-            alpha = 1.0 - (len(formant_history) - 1 - i) * 0.4
-            # Plot F2 vs F1, as is standard
-            ax.plot(f2, f1, alpha=max(0.2, alpha), marker='o', linestyle='-', markersize=4, label=f"Attempt {i+1}")
+            opacity = 1.0 - (len(formant_history) - 1 - i) * 0.3
+            # Plot F2 vs F1, as is standard for vowel charts
+            fig.add_trace(go.Scatter(
+                x=f2,
+                y=f1,
+                mode='lines+markers',
+                name=f'Attempt {i+1}',
+                opacity=max(0.2, opacity),
+                marker=dict(size=6),
+                hovertemplate='F2: %{x:.0f}Hz<br>F1: %{y:.0f}Hz<extra></extra>'
+            ))
             # Add a start point marker
-            ax.plot(f2[0], f1[0], marker='>', color='green', markersize=8, alpha=alpha)
+            fig.add_trace(go.Scatter(
+                x=[f2[0]],
+                y=[f1[0]],
+                mode='markers',
+                marker=dict(symbol='triangle-right', color='green', size=12),
+                name='Start',
+                showlegend=False,
+                hovertemplate='Start<extra></extra>'
+            ))
 
-    # Set axis limits to create an inverted chart (origin at top-right)
-    ax.set_xlim(2500, 800)
-    ax.set_ylim(900, 200)
-    ax.set_xlabel("F2 (Hz)")
-    ax.set_ylabel("F1 (Hz)")
-    ax.legend()
-    plt.tight_layout()
+    # Load and display the vowel chart image as the background
+    try:
+        from PIL import Image
+        img = Image.open("vowel_chart.png")
+        fig.add_layout_image(
+            dict(
+                source=img,
+                xref="x",
+                yref="y",
+                x=800,  # F2 start
+                y=200,  # F1 start
+                sizex=1700, # F2 range (2500-800)
+                sizey=700, # F1 range (900-200)
+                sizing="stretch",
+                opacity=0.5,
+                layer="below")
+        )
+    except FileNotFoundError:
+        print("vowel_chart.png not found. Plotting on a blank background.")
+
+    # Invert axes to match standard phonetic charts (origin at top-right)
+    fig.update_layout(
+        title="Vowel Formant Trajectory",
+        xaxis_title="F2 (Hz)",
+        yaxis_title="F1 (Hz)",
+        xaxis=dict(range=[2500, 800]),  # Inverted F2 axis
+        yaxis=dict(range=[900, 200]),  # Inverted F1 axis
+        legend_title="Attempts",
+        template="plotly_white"
+    )
+
     return fig
 
 # --- Main Analysis Function for Gradio ---
