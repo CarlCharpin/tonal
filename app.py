@@ -101,9 +101,9 @@ def create_vowel_plot(formant_history):
     # Load and display the vowel chart image as the background
     try:
         img = plt.imread("vowel_chart.png")
-        # The exact extent values need to be tuned to align the data with the chart.
-        # These are initial estimates for a typical F1/F2 space.
-        ax.imshow(img, aspect='auto', extent=[2500, 800, 900, 200], zorder=0)
+        # The extent parameter defines the data coordinates for the image corners [left, right, bottom, top].
+        # We use a standard, non-inverted range here and then invert the axes for the whole plot later.
+        ax.imshow(img, aspect='auto', extent=[800, 2500, 200, 900], zorder=0)
     except FileNotFoundError:
         print("vowel_chart.png not found. Plotting on a blank background.")
 
