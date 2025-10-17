@@ -3,3 +3,4 @@ praat-parselmouth
 plotly
 pandas
 scipy
+Pillow
