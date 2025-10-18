@@ -186,7 +186,9 @@ def create_vowel_plot(formant_history):
         xaxis=dict(range=[2500, 800]),
         yaxis=dict(range=[900, 200]),
         legend_title="Attempts",
-        template="plotly_white"
+        template="plotly_white",
+        width=700,
+        height=700
     )
 
     return fig
