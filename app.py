@@ -177,6 +177,14 @@ def create_vowel_plot(formant_history):
                 showlegend=False,
                 hovertemplate='Start<extra></extra>'
             ))
+            fig.add_trace(go.Scatter(
+                x=[f2[-1]], y=[f1[-1]],
+                mode='markers',
+                marker=dict(symbol='circle', color='red', size=12),
+                name='End',
+                showlegend=False,
+                hovertemplate='End<extra></extra>'
+            ))
 
     # Invert axes and set layout
     fig.update_layout(
