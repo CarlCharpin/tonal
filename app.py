@@ -6,6 +6,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gradio as gr
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import base64
+from io import BytesIO
 import numpy as np
 from audio_processing import analyze_audio, analyze_formants
 from scipy.io.wavfile import write as write_wav
@@ -119,13 +121,19 @@ def create_vowel_plot(formant_history):
     """
     fig = go.Figure()
 
-    # Add the background image first
+    # Add the background image first by encoding it as a base64 string
     try:
         from PIL import Image
         img = Image.open("vowel_chart.png")
+
+        # Convert image to a base64 string
+        buffered = BytesIO()
+        img.save(buffered, format="PNG")
+        img_str = base64.b64encode(buffered.getvalue()).decode()
+
         fig.add_layout_image(
             dict(
-                source=img,
+                source=f"data:image/png;base64,{img_str}",
                 xref="x", yref="y",
                 x=800, y=200,
                 sizex=1700, sizey=700,
