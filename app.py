@@ -6,8 +6,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gradio as gr
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import base64
-from io import BytesIO
 import numpy as np
 from audio_processing import analyze_audio, analyze_formants
 from scipy.io.wavfile import write as write_wav
@@ -118,39 +116,52 @@ def create_pitch_plot(history):
 def create_vowel_plot(formant_history):
     """
     Generates an interactive plot of the F1/F2 vowel trajectory on a reference chart using Plotly.
+    The vowel chart is drawn directly onto the plot.
     """
     fig = go.Figure()
 
-    # Add the background image first by encoding it as a base64 string
-    try:
-        from PIL import Image
-        img = Image.open("vowel_chart.png")
+    # Standard IPA vowel formant data (based on a reference speaker)
+    vowel_data = {
+        'i': {'f1': 270, 'f2': 2290}, 'y': {'f1': 270, 'f2': 2000},
+        'ɪ': {'f1': 390, 'f2': 1990}, 'ʏ': {'f1': 390, 'f2': 1800},
+        'e': {'f1': 450, 'f2': 2200}, 'ø': {'f1': 450, 'f2': 1850},
+        'ɛ': {'f1': 530, 'f2': 1840}, 'œ': {'f1': 530, 'f2': 1600},
+        'æ': {'f1': 660, 'f2': 1720},
+        'a': {'f1': 700, 'f2': 1400}, 'ɶ': {'f1': 700, 'f2': 1500},
+        'ɑ': {'f1': 730, 'f2': 1090}, 'ɒ': {'f1': 730, 'f2': 900},
+        'ʌ': {'f1': 640, 'f2': 1220}, 'ɔ': {'f1': 570, 'f2': 840},
+        'ɤ': {'f1': 450, 'f2': 1000}, 'o': {'f1': 450, 'f2': 800},
+        'ɯ': {'f1': 300, 'f2': 900}, 'u': {'f1': 300, 'f2': 870},
+        'ə': {'f1': 500, 'f2': 1500}
+    }
 
-        # Convert image to a base64 string
-        buffered = BytesIO()
-        img.save(buffered, format="PNG")
-        img_str = base64.b64encode(buffered.getvalue()).decode()
+    # Draw the IPA vowel points and their labels
+    f1_vals = [v['f1'] for v in vowel_data.values()]
+    f2_vals = [v['f2'] for v in vowel_data.values()]
+    symbols = list(vowel_data.keys())
 
-        fig.add_layout_image(
-            dict(
-                source=f"data:image/png;base64,{img_str}",
-                xref="x", yref="y",
-                x=800, y=200,
-                sizex=1700, sizey=700,
-                sizing="stretch",
-                opacity=0.5, layer="below"
-            )
-        )
-    except FileNotFoundError:
-        print("vowel_chart.png not found. Plotting on a blank background.")
+    fig.add_trace(go.Scatter(
+        x=f2_vals, y=f1_vals,
+        mode='text',
+        text=symbols,
+        textfont=dict(size=16, color='black'),
+        name='IPA Vowels',
+        showlegend=False
+    ))
+
+    # Draw the vowel chart trapezoid
+    fig.add_shape(type="path",
+        path=" M 2290,270 L 1720,660 L 1090,730 L 840,570 L 800,450 L 900,300 L 2290,270 Z",
+        line=dict(color="lightgrey", width=2),
+        layer="below"
+    )
 
     # Plot each formant trajectory attempt
     for i, (f1, f2) in enumerate(formant_history):
         if f1 is not None and f2 is not None and len(f1) > 0:
             opacity = 1.0 - (len(formant_history) - 1 - i) * 0.3
             fig.add_trace(go.Scatter(
-                x=f2,
-                y=f1,
+                x=f2, y=f1,
                 mode='lines+markers',
                 name=f'Attempt {i+1}',
                 opacity=max(0.2, opacity),
@@ -159,8 +170,7 @@ def create_vowel_plot(formant_history):
                 hovertemplate='F2: %{x:.0f}Hz<br>F1: %{y:.0f}Hz<extra></extra>'
             ))
             fig.add_trace(go.Scatter(
-                x=[f2[0]],
-                y=[f1[0]],
+                x=[f2[0]], y=[f1[0]],
                 mode='markers',
                 marker=dict(symbol='triangle-right', color='green', size=12),
                 name='Start',
@@ -168,13 +178,13 @@ def create_vowel_plot(formant_history):
                 hovertemplate='Start<extra></extra>'
             ))
 
-    # Invert axes to match standard phonetic charts (origin at top-right)
+    # Invert axes and set layout
     fig.update_layout(
         title="Vowel Formant Trajectory",
         xaxis_title="F2 (Hz)",
         yaxis_title="F1 (Hz)",
-        xaxis=dict(range=[2500, 800]),  # Inverted F2 axis
-        yaxis=dict(range=[900, 200]),  # Inverted F1 axis
+        xaxis=dict(range=[2500, 800]),
+        yaxis=dict(range=[900, 200]),
         legend_title="Attempts",
         template="plotly_white"
     )
