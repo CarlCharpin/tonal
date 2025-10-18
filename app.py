@@ -183,7 +183,7 @@ def create_vowel_plot(formant_history):
         title="Vowel Formant Trajectory",
         xaxis_title="F2 (Hz)",
         yaxis_title="F1 (Hz)",
-        xaxis=dict(range=[2500, 800]),
+        xaxis=dict(range=[2500, 750]),
         yaxis=dict(range=[900, 200]),
         legend_title="Attempts",
         template="plotly_white",
